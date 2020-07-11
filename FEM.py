@@ -801,7 +801,7 @@ class FEM:
 
         counter = it_counter()
         if method is None:        
-            self.U, info = self.ml_BAMG.solve(self.b, x0=x0, maxiter=0.1*self.K.shape[0],
+            self.U, info = self.ml_AMG.solve(self.b, x0=x0, maxiter=0.1*self.K.shape[0],
                                          tol=1e-8, callback=counter)
         else:
             M = self.ml_AMG.aspreconditioner()
