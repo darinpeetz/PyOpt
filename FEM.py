@@ -702,7 +702,7 @@ class FEM:
         self.K = interiorDiag * self.K * interiorDiag + exteriorDiag
         self.K = self.K.tobsr(blocksize=(self.nDof, self.nDof))
         
-    def SolveSystemDirect(self, method=None):
+    def SolveSystemDirect(self, method=None, x0=None):
         """ Solves the linear system for displacements directly
     
         Parameters
@@ -765,6 +765,10 @@ class FEM:
             Number of solver iterations
 
         """
+        if maxLevels is None:
+            maxLevels = self.maxLevels
+        if maxCoarse is None:
+            maxCoarse = self.maxCoarse
         
         if self.nDof == 1:
             Nullspace = np.ones((self.nodes.shape[0], 1))
@@ -788,7 +792,7 @@ class FEM:
             Nullspace[2::3,5] =  self.nodes[:,0]
             Nullspace = np.linalg.solve(np.linalg.cholesky(np.dot(Nullspace.T,Nullspace)),Nullspace.T).T
         
-        self.ml_BAMG = pyamg.smoothed_aggregation_solver(self.K,
+        self.ml_AMG = pyamg.smoothed_aggregation_solver(self.K,
                                                B=Nullspace, max_coarse=maxCoarse, max_levels=maxLevels,
                                                presmoother=smoother, postsmoother=smoother,
                                                strength=('symmetric',{'theta':0.003}),
@@ -800,8 +804,8 @@ class FEM:
             self.U, info = self.ml_BAMG.solve(self.b, x0=x0, maxiter=0.1*self.K.shape[0],
                                          tol=1e-8, callback=counter)
         else:
-            M = self.ml_BAMG.aspreconditioner()
-            self.U, info = method(self.ml_BAMG.levels[0].A, self.b, x0=x0, tol=1e-8, M=M,
+            M = self.ml_AMG.aspreconditioner()
+            self.U, info = method(self.ml_AMG.levels[0].A, self.b, x0=x0, tol=1e-8, M=M,
                                   maxiter=0.03*self.K.shape[0], callback=counter)
         self.U[self.fixDof] = 0.
         
