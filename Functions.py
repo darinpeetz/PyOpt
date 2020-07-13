@@ -150,28 +150,38 @@ def Stability(fem, matVals):
 
         if hasattr(fem, 'ml_AMG'):
             # Use Davidson with AMG
+            if fem.springDof.size > 0:
+                fem.SetupAMG(len(fem.ml_GMG.levels))
             M = fem.ml_AMG.aspreconditioner()
             lam, phi = dvd.gd(Ks,B=fem.K,M=M,which="LA",maxiter=1000,k=nev,tol=1e-5,
                               verbosityLevel=0, X=fem.phi.copy())
         elif hasattr(fem, 'ml_GMG'):
             # Use Davidson with GMG
+            if fem.springDof.size > 0:
+                fem.SetupGMG(len(fem.ml_GMG.levels))
             M = fem.ml_GMG.aspreconditioner()
             lam, phi = dvd.gd(Ks,B=fem.K,M=M,which="LA",maxiter=1000,k=nev,tol=1e-5,
                               verbosityLevel=0, X=fem.phi.copy())
         elif hasattr(fem, 'ml_HYBRID'):
+            if fem.springDof.size > 0:
+                fem.SetupHybrid(len(fem.ml_GMG.levels))
             # Use Davidson with hybrid MG
             M = fem.ml_HYBRID.aspreconditioner()
             lam, phi = dvd.gd(Ks,B=fem.K,M=M,which="LA",maxiter=1000,k=nev,tol=1e-5,
                               verbosityLevel=0, X=fem.phi.copy())
         else:
-            springlessDof = np.setdiff1d(fem.freeDof, fem.springDof)
-            K = fem.K.tocsr()
-            K = K[springlessDof, :]
-            K = K[:, springlessDof]
-            K = K.tocoo()
-            
-            K = cvxopt.spmatrix(K.data,K.row.astype(np.int),K.col.astype(np.int))
-            Kfact = cvxopt.cholmod.symbolic(K)
+            if fem.springDof.size > 0:
+                springlessDof = np.setdiff1d(fem.freeDof, fem.springDof)
+                K = fem.K.tocsr()
+                K = K[springlessDof, :]
+                K = K[:, springlessDof]
+                K = K.tocoo()
+                
+                K = cvxopt.spmatrix(K.data,K.row.astype(np.int),K.col.astype(np.int))
+                Kfact = cvxopt.cholmod.symbolic(K)
+            else:
+                Kfact = fem.Kfact
+                
             cvxopt.cholmod.numeric(K, Kfact)
             
             # Use ARPACK
@@ -241,22 +251,22 @@ def Stability(fem, matVals):
                 v[:,i], info = sparse.linalg.cg(fem.ml_AMG.levels[0].A, dKsdU[:,i],
                                                 tol=1e-05, M=M, x0=x0[:,i],
                                                 maxiter=0.03*fem.K.shape[0])
-        if hasattr(fem, 'ml_GMG'):
+        elif hasattr(fem, 'ml_GMG'):
             M = fem.ml_GMG.aspreconditioner()
             for i in range(nev):
                 v[:,i], info = sparse.linalg.cg(fem.ml_GMG.levels[0].A, dKsdU[:,i],
                                                 tol=1e-05, M=M, x0=x0[:,i],
                                                 maxiter=0.03*fem.K.shape[0])
-        if hasattr(fem, 'ml_HYBRID'):
+        elif hasattr(fem, 'ml_HYBRID'):
             M = fem.ml_HYBRID.aspreconditioner()
             for i in range(nev):
                 v[:,i], info = sparse.linalg.cg(fem.ml_HYBRID.levels[0].A, dKsdU[:,i],
                                                 tol=1e-05, M=M, x0=x0[:,i],
                                                 maxiter=0.03*fem.K.shape[0])
         else:
-            B = cvxopt.matrix(dKsdU[fem.freeDof,:])
-            cvxopt.cholmod.solve(fem.Kfact,B)
-            v[fem.freeDof,:] = np.array(B).reshape(fem.freeDof.size, -1)
+            B = cvxopt.matrix(dKsdU[springlessDof,:])
+            cvxopt.cholmod.solve(Kfact,B)
+            v[springlessDof,:] = np.array(B).reshape(springlessDof.size, -1)
             
         fem.v = v.copy()
         
