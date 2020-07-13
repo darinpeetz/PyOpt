@@ -236,6 +236,7 @@ def Stability(fem, matVals):
             
         v = np.zeros_like(dKsdU)
         dKsdU[fem.fixDof] = 0
+        dKsdU[fem.springDof] = 0
         
         if fem.v.shape[1] != nev:
             temp = np.zeros((fem.U.size, nev))
