@@ -336,6 +336,9 @@ class PyOpt:
             f += funDict['weight'] * (obj - funDict['min']) / (funDict['max'] -
                                                                funDict['min'])
             dfdx += funDict['weight'] * dobjdx / (funDict['max'] - funDict['min'])
+            print("\t%s: %f" % (funDict['function'].__name__, 
+                                  funDict['weight'] * (obj - funDict['min']) /
+                                  (funDict['max'] - funDict['min'])))
             
         i = 0
         for iiii, funDict in enumerate(self.constraints):
@@ -347,6 +350,7 @@ class PyOpt:
             g[i] = (con - funDict['constraint']) / (funDict['max'] - funDict['min'])
             dgdx[:,i] = dcondx / (funDict['max'] - funDict['min'])
             i += 1
+            print("\t%s: %f" % (funDict['function'].__name__, g[i-1]))
         
         self.f.append(f)
         self.g.append(g)
