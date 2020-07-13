@@ -278,7 +278,7 @@ class FEM:
         
         self.maxLevels = maxLevels
         self.maxCoarse = maxCoarse
-        self.SetupGMG([Nelx+1, Nely+1], maxCoarse=maxCoarse, maxLevels=maxLevels)
+        self.SetupGMGInterpolaters([Nelx+1, Nely+1], maxCoarse=maxCoarse, maxLevels=maxLevels)
         
     def Create3DMesh(self, Dimensions, Nelx, Nely, Nelz, maxCoarse=100, maxLevels=5):
         """ Creates a uniform brick finite element mesh structure
@@ -353,7 +353,7 @@ class FEM:
         
         self.maxLevels = maxLevels
         self.maxCoarse = maxCoarse
-        self.SetupGMG([Nelx+1, Nely+1, Nelz+1], maxCoarse=maxCoarse, maxLevels=maxLevels)
+        self.SetupGMGInterpolaters([Nelx+1, Nely+1, Nelz+1], maxCoarse=maxCoarse, maxLevels=maxLevels)
             
     def AddBC(self, bcSpecs):
         """ Adds boundary condition info to the FEM structure
@@ -481,7 +481,7 @@ class FEM:
         
         self.material = material
         
-    def SetupGMG(self, Nf, maxCoarse=100, maxLevels=5):
+    def SetupGMGInterpolaters(self, Nf, maxCoarse=100, maxLevels=5):
         """ Creates restriction matrices for geometric multigrid operations
     
         Parameters
@@ -742,16 +742,12 @@ class FEM:
         
         return 1
         
-    def SolveSystemAMG(self, method=None, x0=None, maxLevels=None, maxCoarse=None,
+    def SetupAMG(self, maxLevels=None, maxCoarse=None,
                        smoother=('block_jacobi', {'omega':0.5, 'withrho':False})):
-        """ Solves the linear system for displacements using algebraic multigrid
+        """ Sets up the algebraic multigrid preconditioner
     
         Parameters
         ----------
-        method : scipy.sparse.linalg solver
-            Optional iterative method to pair with the GMG preconditioner
-        x0 : array_like, optional
-            Initial guess
         maxLevels : int, optional
             Maximum levels in the hierarchy
         maxCoarse : int, optional
@@ -798,7 +794,33 @@ class FEM:
                                                strength=('symmetric',{'theta':0.003}),
                                                coarse_solver='splu', smooth=('jacobi',
                                                {'omega': 4.0/3.0,'spectral_radius':self.nDof}), keep=True)
+        
+    def SolveSystemAMG(self, method=None, x0=None, maxLevels=None, maxCoarse=None,
+                       smoother=('block_jacobi', {'omega':0.5, 'withrho':False})):
+        """ Solves the linear system for displacements using algebraic multigrid
+    
+        Parameters
+        ----------
+        method : scipy.sparse.linalg solver
+            Optional iterative method to pair with the GMG preconditioner
+        x0 : array_like, optional
+            Initial guess
+        maxLevels : int, optional
+            Maximum levels in the hierarchy
+        maxCoarse : int, optional
+            Maximum nodes on the coarse grid
+        smoother : tuple or list of tuple, optional
+            Describes the smoothers to use on each level
+    
+        Returns
+        -------
+        it : integer
+            Number of solver iterations
 
+        """
+
+        self.SetupAMG(maxLevels, maxCoarse, smoother)
+        
         counter = it_counter()
         if method is None:        
             self.U, info = self.ml_AMG.solve(self.b, x0=x0, maxiter=0.1*self.K.shape[0],
@@ -810,18 +832,14 @@ class FEM:
         self.U[self.fixDof] = 0.
         
         return counter.it
-        
-    def SolveSystemHybrid(self, method=None, x0=None, maxLevels=None, maxCoarse=None,
+    
+    def SetupHybrid(self, maxLevels=None, maxCoarse=None,
                           smoother=('block_jacobi', {'omega':0.5, 'withrho':False}),
                           nG=1):
-        """ Solves the linear system for displacements using algebraic multigrid
+        """ Sets up the hybrid multigrid
     
         Parameters
         ----------
-        method : scipy.sparse.linalg solver
-            Optional iterative method to pair with the GMG preconditioner
-        x0 : array_like, optional
-            Initial guess
         maxLevels : int, optional
             Maximum levels in the hierarchy
         maxCoarse : int, optional
@@ -890,6 +908,35 @@ class FEM:
         from pyamg.relaxation.smoothing import change_smoothers
         change_smoothers(self.ml_HYBRID, presmoother=smoother, postsmoother=smoother)
         
+    def SolveSystemHybrid(self, method=None, x0=None, maxLevels=None, maxCoarse=None,
+                          smoother=('block_jacobi', {'omega':0.5, 'withrho':False}),
+                          nG=1):
+        """ Solves the linear system for displacements using hybrid multigrid
+    
+        Parameters
+        ----------
+        method : scipy.sparse.linalg solver
+            Optional iterative method to pair with the GMG preconditioner
+        x0 : array_like, optional
+            Initial guess
+        maxLevels : int, optional
+            Maximum levels in the hierarchy
+        maxCoarse : int, optional
+            Maximum nodes on the coarse grid
+        smoother : tuple or list of tuple, optional
+            Describes the smoothers to use on each level
+        nG : int, optional
+            Number of levels of geometric coarsening to use
+    
+        Returns
+        -------
+        it : integer
+            Number of solver iterations
+
+        """
+        
+        self.SetupHybrid(maxLevels, maxCoarse, smoother, nG)
+        
         counter = it_counter()
         if method is None:        
             self.U, info = self.ml_HYBRID.solve(self.b, x0=x0, maxiter=0.1*self.K.shape[0],
@@ -901,6 +948,47 @@ class FEM:
         self.U[self.fixDof] = 0.
         
         return counter.it
+        
+    def SetupGMG(self, maxLevels=None, maxCoarse=None,
+                       smoother=('block_jacobi', {'omega' : 0.5, 'withrho': False})):
+        """ Sets up the geometric multigrid
+    
+        Parameters
+        ----------
+        maxLevels : int, optional
+            Maximum levels in the hierarchy
+        maxCoarse : int, optional
+            Maximum nodes on the coarse grid
+        smoother : tuple or list of tuple, optional
+            Describes the smoothers to use on each level
+    
+        Returns
+        -------
+        it : integer
+            Number of solver iterations
+
+        """
+        
+        if maxLevels is None:
+            maxLevels = self.maxLevels
+        if maxCoarse is None:
+            maxCoarse = self.maxCoarse
+                
+        levels = []
+        levels.append(pyamg.multilevel_solver.level())
+        levels[-1].A = self.K
+        for P in self.P:
+            levels[-1].P = P
+            levels[-1].R = P.T
+            levels.append(pyamg.multilevel_solver.level())
+            levels[-1].A = levels[-2].R * levels[-2].A * levels[-2].P
+            if (len(levels) == maxLevels or
+                levels[-1].A.shape[0]//levels[1].A.blocksize[0] < maxCoarse):
+                break
+            
+        self.ml_GMG = pyamg.multilevel_solver(levels, coarse_solver='splu')
+        from pyamg.relaxation.smoothing import change_smoothers
+        change_smoothers(self.ml_GMG, presmoother=smoother, postsmoother=smoother)
         
     def SolveSystemGMG(self, method=None, x0=None, maxLevels=None, maxCoarse=None,
                        smoother=('block_jacobi', {'omega' : 0.5, 'withrho': False})):
@@ -925,26 +1013,8 @@ class FEM:
             Number of solver iterations
 
         """
-        if maxLevels is None:
-            maxLevels = self.maxLevels
-        if maxCoarse is None:
-            maxCoarse = self.maxCoarse
-                
-        levels = []
-        levels.append(pyamg.multilevel_solver.level())
-        levels[-1].A = self.K
-        for P in self.P:
-            levels[-1].P = P
-            levels[-1].R = P.T
-            levels.append(pyamg.multilevel_solver.level())
-            levels[-1].A = levels[-2].R * levels[-2].A * levels[-2].P
-            if (len(levels) == maxLevels or
-                levels[-1].A.shape[0]//levels[1].A.blocksize[0] < maxCoarse):
-                break
-            
-        self.ml_GMG = pyamg.multilevel_solver(levels, coarse_solver='splu')
-        from pyamg.relaxation.smoothing import change_smoothers
-        change_smoothers(self.ml_GMG, presmoother=smoother, postsmoother=smoother)
+        
+        self.SetupGMG(maxLevels, maxCoarse, smoother)
         
         counter = it_counter()
         if method is None:        
@@ -952,7 +1022,7 @@ class FEM:
                                          tol=1e-8, callback=counter)
         else:
             M = self.ml_GMG.aspreconditioner()
-            self.U, info = method(levels[0].A, self.b, x0=x0, tol=1e-8, M=M,
+            self.U, info = method(self.ml_GMG.levels[0].A, self.b, x0=x0, tol=1e-8, M=M,
                                   maxiter=0.03*self.K.shape[0], callback=counter)
         
         self.U[self.fixDof] = 0.
