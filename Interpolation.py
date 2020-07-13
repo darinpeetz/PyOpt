@@ -57,7 +57,7 @@ class Interpolation:
         """
         # Minimum operation is to prevent numerical errors where rho > 1
         rho = np.minimum(self.P * x, 1)
-        if self.q < 1:
+        if self.vdmin < 1:
             # No maximum feature restriction
             y = np.ones_like(rho)
             rhoq = np.zeros_like(rho)
