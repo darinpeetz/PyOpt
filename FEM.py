@@ -793,7 +793,7 @@ class FEM:
                                                presmoother=smoother, postsmoother=smoother,
                                                strength=('symmetric',{'theta':0.003}),
                                                coarse_solver='splu', smooth=('jacobi',
-                                               {'omega': 4.0/3.0,'spectral_radius':self.nDof}), keep=True)
+                                               {'omega': 4.0/3.0}), keep=True)
         
     def SolveSystemAMG(self, method=None, x0=None, maxLevels=None, maxCoarse=None,
                        smoother=('block_jacobi', {'omega':0.5, 'withrho':False})):
@@ -898,8 +898,7 @@ class FEM:
                                                 B=Nullspace, max_coarse=maxCoarse,
                                                 max_levels=maxLevels-nG+1,
                                                 strength=('symmetric',{'theta':0.003}),
-                                                smooth=('jacobi', {'omega': 4.0/3.0,
-                                                                   'spectral_radius':self.nDof}),
+                                                smooth=('jacobi', {'omega': 4.0/3.0}),
                                                 keep=True)
         
 
